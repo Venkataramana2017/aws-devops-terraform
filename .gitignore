@@ -1,0 +1,38 @@
+# Ignore everything by default.
+*
+
+# Explicitly ignore Terraform state and backup files.
+*.tfstate
+*.tfstate.*
+
+# Track only Terraform configuration files.
+!*.tf
+
+# Reusable modules, examples and documentation.
+!modules/
+!modules/**/
+!examples/
+!examples/**/
+!environments/
+!environments/**/
+!environments/**/*.md
+!environments/**/.terraform.lock.hcl
+!docs/
+!docs/**/
+!docs/**/*.md
+!modules/**/*.md
+!examples/**/*.md
+!**/*.tfvars.example
+!.gitignore
+!.github/
+!.github/**/
+!.github/**/*.yml
+!.github/**/*.js
+!.github/**/*.sh
+!examples/**/.terraform.lock.hcl
+**/.terraform/*
+*.tfplan
+*.tfvars
+*.tfvars.json
+backend.generated.tf
+backend.generated.hcl

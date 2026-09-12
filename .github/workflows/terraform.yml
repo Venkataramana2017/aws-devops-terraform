@@ -1,0 +1,233 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - 'modules/**'
+      - 'environments/**'
+      - '.github/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to manage
+        type: choice
+        options: [dev, test, pre, prod]
+        required: true
+      action:
+        description: Terraform operation
+        type: choice
+        options: [plan, apply, destroy]
+        required: true
+        default: plan
+      confirmation:
+        description: 'For apply/destroy, type ACTION-ENVIRONMENT (example: apply-dev or destroy-prod)'
+        type: string
+        required: false
+      pr_number:
+        description: 'Optional PR number for the result comment (same repository)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  TERRAFORM_VERSION: '1.15.2'
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    outputs:
+      environments: ${{ steps.inputs.outputs.environments }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Check dispatch inputs
+        id: inputs
+        env:
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ inputs.environment }}
+          OPERATION: ${{ inputs.action }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Run manual operations from the default branch.'; exit 1; }
+            [[ "$TARGET" =~ ^(dev|test|pre|prod)$ ]] || exit 1
+            [[ "$OPERATION" =~ ^(plan|apply|destroy)$ ]] || exit 1
+            if [[ "$OPERATION" != "plan" ]]; then
+              [[ "$CONFIRMATION" == "$OPERATION-$TARGET" ]] || { echo 'Confirmation does not match the operation and environment.'; exit 1; }
+            fi
+            [[ -z "$PR_NUMBER" || "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || exit 1
+            echo "environments=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo 'environments=["dev","test","pre","prod"]' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Formatting
+        run: |
+          terraform fmt -check -recursive modules
+          terraform fmt -check -recursive environments
+      - name: Check helper scripts
+        run: |
+          bash -n .github/scripts/prepare-terraform.sh
+          node .github/scripts/pr-comment.test.js
+      - name: Validate all environments without AWS credentials
+        run: |
+          for target in dev test pre prod; do
+            terraform -chdir="environments/$target" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="environments/$target" validate -no-color
+          done
+
+  plan:
+    needs: checks
+    # Fork PRs receive static validation only. Never use pull_request_target here.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.checks.outputs.environments) }}
+    environment: ${{ format('{0}-plan', matrix.target) }}
+    concurrency:
+      group: terraform-state-${{ matrix.target }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: ${{ matrix.target }}
+      TF_VAR_bucket_name: ${{ vars.TF_BUCKET_NAME }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - name: Terraform plan
+        id: plan
+        env:
+          OPERATION: ${{ inputs.action || 'plan' }}
+        run: |
+          args=()
+          if [[ "$OPERATION" == 'destroy' ]]; then args+=(-destroy); fi
+          set +e
+          terraform plan -no-color -input=false -lock-timeout=5m -detailed-exitcode "${args[@]}" -out=deployment.tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          if [[ "$code" != 0 && "$code" != 2 ]]; then exit "$code"; fi
+          terraform show -json deployment.tfplan | jq '{create: ([.resource_changes[]? | select(.change.actions | index("create"))] | length), update: ([.resource_changes[]? | select(.change.actions | index("update"))] | length), delete: ([.resource_changes[]? | select(.change.actions | index("delete"))] | length)}' > summary.json
+          echo "### Terraform: $TARGET ($OPERATION)" >> "$GITHUB_STEP_SUMMARY"
+          cat summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Save exact plan for approval and execution
+        if: github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ matrix.target }}-${{ github.run_attempt }}
+          path: |
+            environments/${{ matrix.target }}/deployment.tfplan
+            environments/${{ matrix.target }}/plan.txt
+          retention-days: 1
+          if-no-files-found: error
+      - name: Comment plan result on PR
+        if: always() && (github.event_name == 'pull_request' || inputs.pr_number != '')
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ inputs.action || 'plan' }}
+          PHASE: plan
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  execute:
+    needs: [checks, plan]
+    if: github.event_name == 'workflow_dispatch' && inputs.action != 'plan'
+    runs-on: ubuntu-latest
+    # Configure required reviewers on these environments in GitHub Settings.
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: terraform-state-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: ${{ inputs.environment }}
+      TF_VAR_bucket_name: ${{ vars.TF_BUCKET_NAME }}
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment }}-${{ github.run_attempt }}
+          path: environments/${{ inputs.environment }}
+      - name: Apply the approved plan (including destroy plans)
+        run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
+      - name: Comment execution result on PR
+        if: always() && inputs.pr_number != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ inputs.action }}
+          PHASE: execution
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
