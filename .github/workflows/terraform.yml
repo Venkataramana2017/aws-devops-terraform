@@ -44,7 +44,7 @@ env:
 
 jobs:
   request:
-    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && startsWith(github.event.comment.body, '/'))
+    if: github.event_name != 'issue_comment' || (github.event.issue.pull_request && contains(github.event.comment.body, '//'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,8 +71,8 @@ jobs:
               core.setOutput('sha', context.sha);
               return;
             }
-            const match = context.payload.comment.body.trim().match(/^\/(plan|apply|destroy)(?:\s+(dev|test|pre|prod))?$/);
-            if (!match) throw new Error('Use /plan, /apply, or /destroy, optionally followed by dev, test, pre, or prod.');
+            const match = context.payload.comment.body.trim().match(/^(dev|test|pre|prod)\s+\/\/(plan|apply|destroy)$/i);
+            if (!match) throw new Error('Specify one environment and command in the same comment, for example: dev //plan, test //apply, or prod //destroy.');
             const permission = async username => (await github.rest.repos.getCollaboratorPermissionLevel({...context.repo, username})).data.permission;
             const allowed = p => ['admin', 'maintain', 'write'].includes(p);
             if (!allowed(await permission(context.payload.comment.user.login))) throw new Error('Commands require repository write access.');
@@ -92,8 +92,8 @@ jobs:
               if (review.state === 'APPROVED' && review.commit_id === pr.head.sha) approved = true;
             }
             if (!approved) throw new Error('The current PR commit needs approval from a reviewer with write access.');
-            core.setOutput('operation', match[1]);
-            core.setOutput('target', match[2] || 'dev');
+            core.setOutput('operation', match[2].toLowerCase());
+            core.setOutput('target', match[1].toLowerCase());
             core.setOutput('sha', pr.head.sha);
             core.setOutput('pr', number);
 

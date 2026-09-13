@@ -13,17 +13,21 @@ Push runs report results in Actions; PR runs post the PR comments. Fork PRs rece
 and validation only, without AWS credentials.
 
 After the current PR commit is approved, a collaborator with repository write
-access can post `/plan`, `/apply`, or `/destroy` in the PR conversation. Commands
-default to `dev`; append `test`, `pre`, or `prod` to select another environment,
-for example `/plan test` or `/apply prod`. Each command must occupy the whole comment.
+access can post an environment followed by `//plan`, `//apply`, or `//destroy`
+in the PR conversation. An explicit environment is required on every command:
+`dev`, `test`, `pre`, or `prod`. For example, post `dev //plan`, `test //apply`,
+or `prod //destroy`. Environment and command can be on separate lines in the
+same comment. Separate comments do not share an environment selection.
+Commands are case-insensitive and each comment must contain only one command.
 The PR must be open, non-draft, and from this repository. Approval must come from
 another collaborator with write access for the current head commit, with no
 outstanding changes requested. Approval and the head SHA are checked again when
 jobs start, including after deployment approval waits. New commits require new approval.
 
-Comment runs check out the approved PR head commit. `/apply` creates a fresh plan;
-`/destroy` creates a fresh destroy plan. Both execute that run's saved plan after
-configured environment approval. `/plan` never executes changes. Results are posted
+Comment runs check out the approved PR head commit. `//apply` creates a fresh plan;
+`//destroy` creates a fresh destroy plan. Both execute that run's saved plan after
+configured environment approval. `//plan` never executes changes. Only the selected
+environment is planned or changed by a comment command. Results are posted
 back to the PR. The workflow must first be merged into the default branch for
 GitHub to deliver `issue_comment` events.
 

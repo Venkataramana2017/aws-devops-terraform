@@ -7,7 +7,7 @@ const run = new (Object.getPrototypeOf(async function () {}).constructor)('githu
 async function command(options = {}) {
   const outputs = {};
   const context = {eventName: 'issue_comment', repo: {owner: 'owner', repo: 'repo'}, payload: {
-    comment: {body: options.body || '/plan', user: {login: 'operator'}},
+    comment: {body: options.body || 'dev //plan', user: {login: 'operator'}},
     issue: {number: 7}, repository: {full_name: 'owner/repo'}
   }};
   const reviews = options.reviews || [{user: {login: 'reviewer'}, state: 'APPROVED', commit_id: 'head'}];
@@ -25,11 +25,15 @@ async function command(options = {}) {
   await run({}, {eventName: 'workflow_dispatch', sha: 'default-sha'}, {setOutput: (key, value) => dispatch[key] = value});
   assert.deepEqual(dispatch, {operation: 'apply', target: 'test', pr: '12', sha: 'default-sha'});
   for (const operation of ['plan', 'apply', 'destroy']) {
-    assert.deepEqual(await command({body: `/${operation}`}), {operation, target: 'dev', sha: 'head', pr: 7});
-    assert.equal((await command({body: `/${operation} prod`})).target, 'prod');
+    for (const target of ['dev', 'test', 'pre', 'prod']) {
+      assert.deepEqual(await command({body: `${target} //${operation}`}), {operation, target, sha: 'head', pr: 7});
+    }
   }
-  await assert.rejects(command({body: '/apply all'}), /Use \/plan/);
-  await assert.rejects(command({body: '/destroy dev\necho injected'}), /Use \/plan/);
+  assert.equal((await command({body: 'Prod //PLAN'})).target, 'prod');
+  assert.equal((await command({body: 'test\n//plan'})).target, 'test');
+  for (const body of ['//plan', '/plan', 'dev', 'all //apply', 'dev //destroy\necho injected', 'dev //plan\ntest //apply']) {
+    await assert.rejects(command({body}), /Specify one environment/);
+  }
   await assert.rejects(command({permission: 'read'}), /write access/);
   await assert.rejects(command({pr: {state: 'closed'}}), /open, non-draft/);
   await assert.rejects(command({pr: {draft: true}}), /open, non-draft/);
