@@ -23,7 +23,7 @@ cd environments/dev
 Copy-Item terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars: replace bucket_name with a globally unique name.
 $env:AWS_PROFILE = "your-dev-profile"
-terraform init
+terraform init -backend-config="bucket=YOUR-STATE-BUCKET" -backend-config="region=us-east-1"
 terraform validate
 terraform plan -out=deployment.tfplan
 terraform apply deployment.tfplan
@@ -35,9 +35,10 @@ accounts through profiles; directories alone do not enforce account isolation.
 No Terraform workspaces are required. Run commands from the selected directory,
 not from the repository root, which still contains the original S3 deployment.
 
-Each directory keeps its own `terraform.tfstate` and `.terraform` directory by
-default. Never copy state between environments. Local state and private
-`terraform.tfvars` files are ignored; provider lock files are tracked.
+Each directory uses a separate S3 state key in the shared backend bucket. Follow
+[the one-time backend setup](../bootstrap/backend/README.md) before deployment.
+Private variable files and local state backups are ignored; provider lock files
+are tracked. Never copy state between environments.
 
 Override `vpc_cidr`, `instance_type`, `capacity`, `aws_region`, `ami_id`, NAT
 options, and instance profile independently in each `terraform.tfvars`.
@@ -49,34 +50,8 @@ the latest AL2023 x86_64 image is looked up during planning. Private instances
 need NAT or appropriate interface endpoints plus IAM permissions for SSM
 management. Enabling NAT with `single_nat_gateway = false` creates one per AZ.
 
-## Optional shared remote state
+## Shared remote state
 
-Before using these roots with a team, configure a separately provisioned S3 state
-bucket with versioning and suitable access controls. Add a `backend.tf` inside
-each environment, for example for dev:
-
-```hcl
-terraform {
-  backend "s3" {
-    bucket       = "your-existing-terraform-state-bucket"
-    key          = "aws-devops/dev/terraform.tfstate"
-    region       = "us-east-1"
-    encrypt      = true
-    use_lockfile = true
-  }
-}
-```
-
-Use a different key (`test`, `pre`, `prod`) for every environment, or a separate
-state bucket per account. S3 native locking requires Terraform >= 1.10; raise
-`required_version` to `>= 1.10.0` when enabling this backend option. Give the
-backend credentials permission to manage the state and lock objects. Do not
-put credentials in backend configuration. Run `terraform init` for a new root,
-or `terraform init -migrate-state` if intentionally migrating existing local
-state; review the migration prompt.
-
-Backend reference: [HashiCorp S3 backend documentation](https://developer.hashicorp.com/terraform/language/backend/s3).
-
-See [the module guide](../docs/terraform-modules.md) for module inputs, connectivity,
-costs, and teardown details. Destroying one environment from its own directory
-does not target resources tracked by other environment states.
+Committed backend.tf files enable S3 locking and separate environment keys.
+Supply the bucket and region during initialization, as described in the
+[backend bootstrap guide](../bootstrap/backend/README.md). Terraform >= 1.10 is required.

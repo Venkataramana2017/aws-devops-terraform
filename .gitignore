@@ -11,6 +11,10 @@
 # Reusable modules, examples and documentation.
 !modules/
 !modules/**/
+!bootstrap/
+!bootstrap/**/
+!bootstrap/**/*.md
+!bootstrap/**/.terraform.lock.hcl
 !examples/
 !examples/**/
 !environments/

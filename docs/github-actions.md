@@ -1,14 +1,22 @@
 # Terraform in GitHub Actions
 
-The workflow validates all four environment roots. Same-repository PRs also plan
-all four environments and receive result comments. Fork PRs receive formatting
+Every push to any branch triggers validation and plans for all four environments,
+including `dev*`, `feature*`, `main`, and branch names containing `/`. Pushes have
+no file-path filter; documentation-only commits trigger the workflow too. Tag
+pushes are excluded. The workflow file must be present on the pushed branch.
+Plans require the configured AWS roles, backend, and plan-environment approvals.
+Pushes never apply or destroy resources.
+
+Same-repository PRs also plan all four environments and receive result comments.
+A push to a branch with an open matching PR can trigger both push and PR runs.
+Push runs report results in Actions; PR runs post the PR comments. Fork PRs receive formatting
 and validation only, without AWS credentials. PR comments are results, not command
 triggers; typing `apply` or `destroy` in a comment does not execute anything.
 
 ## One-time configuration
 
 1. Push these files and merge the workflow onto the default branch.
-2. Provision an S3 backend bucket separately, with versioning, encryption, and
+2. Use `bootstrap/backend` to provision the one-time S3 backend bucket with versioning, encryption, and
    appropriate state/lock access permissions. Do not use the application bucket
    managed by these modules as the backend.
 3. Configure AWS OIDC trust for this repository. Use separate plan and deployment
@@ -38,8 +46,8 @@ Keep region, backend bucket, application bucket and input variables identical
 between each plan/deployment pair. Only their IAM role should differ.
 State keys are `aws-devops/dev/terraform.tfstate`, `aws-devops/test/terraform.tfstate`,
 `aws-devops/pre/terraform.tfstate`, and `aws-devops/prod/terraform.tfstate`.
-The workflow generates backend configuration on the runner; local roots remain
-local unless you explicitly configure their backend. If you already applied
+The workflow supplies bucket and region to the committed backend blocks.
+Initialize local environment roots with the same bucket and region used by CI. If you already applied
 locally, migrate that state into the matching backend before running CI, using
 the instructions in `environments/README.md`. Never apply the same environment
 against both local and remote state.
@@ -51,7 +59,7 @@ Restrict who can change workflows and who can approve deployments.
 
 ## Plan, apply, or destroy
 
-In **Actions → Terraform → Run workflow**:
+In **Actions â†’ Terraform â†’ Run workflow**:
 
 1. Select the default branch and `dev`, `test`, `pre`, or `prod`.
 2. Select `plan`, `apply`, or `destroy`.
