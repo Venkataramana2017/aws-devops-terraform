@@ -2,7 +2,7 @@
 bucket_name = "replace-with-your-unique-dev-bucket"
 aws_region  = "us-east-1"
 instance_type = "t3.micro"
- enable_nat_gateway = true
- single_nat_gateway = false
+enable_nat_gateway = true
+single_nat_gateway = false
 ami_id = "ami-0002d0abb85b05cfa"
- iam_instance_profile = "existing-dev-ssm-profile"
+iam_instance_profile = "existing-dev-ssm-profile"

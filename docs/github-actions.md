@@ -99,5 +99,24 @@ if an artifact expires or an execution job needs another attempt.
 Creating these files does not configure AWS trust, GitHub environment protections,
 or create AWS resources. Nonempty S3 buckets refuse destruction by default.
 
+## Refresh provider checksums
+
+CI uses read-only provider lock files. Keep `.terraform.lock.hcl` committed in
+`bootstrap/backend` and each environment, including checksums for the Linux
+runner and Windows development machines. After changing provider requirements,
+run these commands from the repository root and commit the updated lock files:
+
+```bash
+for root in bootstrap/backend environments/dev environments/test environments/pre environments/prod; do
+  terraform -chdir="$root" init -backend=false -input=false
+  terraform -chdir="$root" providers lock -platform=linux_amd64 -platform=windows_amd64
+  terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+  terraform -chdir="$root" validate -no-color
+done
+```
+
+These commands verify configuration without accessing the remote state or applying
+resources. See [HashiCorp's provider lock documentation](https://developer.hashicorp.com/terraform/cli/commands/providers/lock).
+
 References: [GitHub manual workflow inputs](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 and [AWS OIDC configuration](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws).
