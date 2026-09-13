@@ -51,8 +51,6 @@ GitHub to deliver `issue_comment` events.
 | --- | --- |
 | `AWS_ROLE_ARN` | Plan role in `*-plan`; deployment role in the corresponding deployment environment |
 | `AWS_REGION` | Resource region, for example `us-east-1` |
-| `TF_STATE_BUCKET` | Existing backend bucket name |
-| `TF_STATE_REGION` | Backend bucket region |
 | `TF_BUCKET_NAME` | Globally unique application bucket name for this environment |
 | `TF_VARS_JSON` | Optional JSON object overriding Terraform inputs, e.g. `{"enable_nat_gateway":true,"ami_id":"ami-..."}` |
 
@@ -60,7 +58,8 @@ Keep region, backend bucket, application bucket and input variables identical
 between each plan/deployment pair. Only their IAM role should differ.
 State keys are `aws-devops/dev/terraform.tfstate`, `aws-devops/test/terraform.tfstate`,
 `aws-devops/pre/terraform.tfstate`, and `aws-devops/prod/terraform.tfstate`.
-The workflow supplies bucket and region to the committed backend blocks.
+The workflow and committed backend blocks use `bucket-backend-terraform-313932316713-us-east-1`
+in `us-east-1`. GitHub `TF_STATE_BUCKET` and `TF_STATE_REGION` variables are no longer used.
 Initialize local environment roots with the same bucket and region used by CI. If you already applied
 locally, migrate that state into the matching backend before running CI, using
 the instructions in `environments/README.md`. Never apply the same environment

@@ -20,7 +20,7 @@ variable "bucket_name" {
 variable "ami_id" {
   description = "Optional pinned Amazon Linux compatible x86_64 AMI; otherwise use latest AL2023."
   type        = string
-  default     = null
+  default     = "ami-0002d0abb85b05cfa"
 }
 variable "enable_nat_gateway" {
   description = "Enable charged private internet egress."

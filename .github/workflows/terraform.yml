@@ -186,8 +186,8 @@ jobs:
       TF_VAR_bucket_name: ${{ vars.TF_BUCKET_NAME }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
-      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-      STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
       AWS_REGION: ${{ vars.AWS_REGION }}
       ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
     defaults:
@@ -276,8 +276,8 @@ jobs:
       TF_VAR_bucket_name: ${{ vars.TF_BUCKET_NAME }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
-      STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-      STATE_REGION: ${{ vars.TF_STATE_REGION }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
       AWS_REGION: ${{ vars.AWS_REGION }}
       ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
     defaults:

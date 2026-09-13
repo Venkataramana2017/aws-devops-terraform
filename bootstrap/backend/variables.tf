@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "bucket_name" {
-  description = "Optional unique bucket name; default includes the authenticated AWS account ID and region."
+  description = "Terraform state bucket name used by the environment backends."
   type        = string
-  default     = null
+  default     = "bucket-backend-terraform-313932316713-us-east-1"
 }

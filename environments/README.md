@@ -23,7 +23,7 @@ cd environments/dev
 Copy-Item terraform.tfvars.example terraform.tfvars
 # Edit terraform.tfvars: replace bucket_name with a globally unique name.
 $env:AWS_PROFILE = "your-dev-profile"
-terraform init -backend-config="bucket=YOUR-STATE-BUCKET" -backend-config="region=us-east-1"
+terraform init -backend-config="bucket=bucket-backend-terraform-313932316713-us-east-1" -backend-config="region=us-east-1"
 terraform validate
 terraform plan -out=deployment.tfplan
 terraform apply deployment.tfplan
@@ -53,5 +53,6 @@ management. Enabling NAT with `single_nat_gateway = false` creates one per AZ.
 ## Shared remote state
 
 Committed backend.tf files enable S3 locking and separate environment keys.
-Supply the bucket and region during initialization, as described in the
+The bucket `bucket-backend-terraform-313932316713-us-east-1` and region `us-east-1`
+are configured in each backend. For state migration, see the
 [backend bootstrap guide](../bootstrap/backend/README.md). Terraform >= 1.10 is required.

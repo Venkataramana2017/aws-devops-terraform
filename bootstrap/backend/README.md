@@ -1,7 +1,7 @@
 # One-time Terraform state bucket
 
 This independent bootstrap root creates a dedicated state bucket in `us-east-1`
-by default. Its name includes the authenticated AWS account ID and region.
+by default, named `bucket-backend-terraform-313932316713-us-east-1`.
 The bucket has versioning, AES256 encryption, public access blocking,
 bucket-owner-enforced ownership, and a TLS-only policy. `prevent_destroy` and
 `force_destroy = false` protect it from accidental Terraform deletion.
@@ -33,7 +33,7 @@ re-create or take over a bucket.
 ## Initialize environment backends
 
 Terraform >= 1.10 is required for native S3 locking. Each environment now has a
-committed partial `backend.tf` with its own key. From the repository root:
+committed `backend.tf` with the shared bucket, region, and its own key. From the repository root:
 
 ```powershell
 $stateBucket = terraform -chdir=bootstrap/backend output -raw bucket_name
@@ -49,8 +49,8 @@ its backup. New empty environments initialize without uploading resources.
 The original repository-root S3 state is separate and is not migrated by these
 commands. Do not copy that state into an environment key.
 
-Configure GitHub `TF_STATE_BUCKET` and `TF_STATE_REGION` variables in all eight
-plan/deployment environments with the outputs above. The workflow uses the same
+The workflow configures the same bucket and region directly; GitHub
+`TF_STATE_BUCKET` and `TF_STATE_REGION` variables are not used. It uses the same
 committed backend blocks and keys as local Terraform. AWS roles need backend
 bucket listing, state object read/write, and lock object read/write/delete
 permissions. Environment deployments do not own or destroy this bucket.
