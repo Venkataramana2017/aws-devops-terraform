@@ -1,7 +1,7 @@
 # Terraform in GitHub Actions
 
-Every push to any branch triggers validation and plans for all four environments,
-including `dev*`, `feature*`, `main`, and branch names containing `/`. Pushes have
+Every push to a branch other than `main` triggers validation and plans for all four environments,
+including `dev*`, `feature*`, and branch names containing `/`. Pushes have
 no file-path filter; documentation-only commits trigger the workflow too. Tag
 pushes are excluded. The workflow file must be present on the pushed branch.
 Plans require the configured AWS roles, backend, and plan-environment approvals.
@@ -10,8 +10,22 @@ Pushes never apply or destroy resources.
 Same-repository PRs also plan all four environments and receive result comments.
 A push to a branch with an open matching PR can trigger both push and PR runs.
 Push runs report results in Actions; PR runs post the PR comments. Fork PRs receive formatting
-and validation only, without AWS credentials. PR comments are results, not command
-triggers; typing `apply` or `destroy` in a comment does not execute anything.
+and validation only, without AWS credentials.
+
+After the current PR commit is approved, a collaborator with repository write
+access can post `/plan`, `/apply`, or `/destroy` in the PR conversation. Commands
+default to `dev`; append `test`, `pre`, or `prod` to select another environment,
+for example `/plan test` or `/apply prod`. Each command must occupy the whole comment.
+The PR must be open, non-draft, and from this repository. Approval must come from
+another collaborator with write access for the current head commit, with no
+outstanding changes requested. Approval and the head SHA are checked again when
+jobs start, including after deployment approval waits. New commits require new approval.
+
+Comment runs check out the approved PR head commit. `/apply` creates a fresh plan;
+`/destroy` creates a fresh destroy plan. Both execute that run's saved plan after
+configured environment approval. `/plan` never executes changes. Results are posted
+back to the PR. The workflow must first be merged into the default branch for
+GitHub to deliver `issue_comment` events.
 
 ## One-time configuration
 
@@ -70,7 +84,8 @@ In **Actions â†’ Terraform â†’ Run workflow**:
 
 Apply/destroy execute the **saved plan** from that same run and commit after the
 deployment approval. Destroy first generates a destroy plan. PR plans are for
-review and are not reused for deployment; merge intended changes first. A manual
+review and are not reused for deployment. Comment commands deploy the approved
+PR commit without requiring a merge. A manual
 run deploys the selected default-branch commit, not the optional PR's branch.
 If state changes during approval, the saved plan can be rejected as stale; start
 a new run and review its new plan. State locking and per-environment concurrency

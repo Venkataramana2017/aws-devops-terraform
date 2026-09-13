@@ -4,6 +4,7 @@
 # Explicitly ignore Terraform state and backup files.
 *.tfstate
 *.tfstate.*
+*.lock.hcl
 
 # Track only Terraform configuration files.
 !*.tf

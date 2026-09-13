@@ -11,6 +11,6 @@ module.exports = async ({ github, context, fs }) => {
     const counts = JSON.parse(fs.readFileSync(path, 'utf8'));
     summary = `\nResources: **${counts.create} create**, **${counts.update} update**, **${counts.delete} delete**. Replacements count as create and delete.\n`;
   }
-  const body = `### Terraform ${process.env.OPERATION}: ${target} — ${phase}\nStatus: **${process.env.RESULT}**\nCommit: \`${context.sha}\`\n${summary}\n[Review workflow output and approval details](${run})\n\n${phase === 'plan' ? 'This is a plan only. To create or remove resources, run the Terraform workflow manually from the default branch, select the operation/environment, and enter the matching confirmation. A merged PR is not automatically applied.' : 'See the workflow logs for the result. This operation used the saved plan from this run.'}`;
+  const body = `### Terraform ${process.env.OPERATION}: ${target} — ${phase}\nStatus: **${process.env.RESULT}**\nCommit: \`${process.env.COMMIT_SHA || context.sha}\`\n${summary}\n[Review workflow output and approval details](${run})\n\n${phase === 'plan' ? 'Use /plan, /apply, or /destroy followed by an optional environment (default: dev) on an approved PR. Apply/destroy runs generate a saved plan and wait for configured deployment approval. Manual dispatch is also available.' : 'See the workflow logs for the result. This operation used the saved plan from this run.'}`;
   await github.rest.issues.createComment({ ...context.repo, issue_number: number, body });
 };
