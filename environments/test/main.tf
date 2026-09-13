@@ -20,10 +20,6 @@ module "vpc" {
     az2 = { availability_zone = data.aws_availability_zones.available.names[1], public_cidr = cidrsubnet(var.vpc_cidr, 8, 2), private_cidr = cidrsubnet(var.vpc_cidr, 8, 12) }
   }
 }
-module "s3" {
-  source      = "../../modules/s3"
-  bucket_name = var.bucket_name
-}
 module "security_group" {
   source        = "../../modules/security-group"
   name          = "${var.name}-compute"

@@ -35,8 +35,8 @@ GitHub to deliver `issue_comment` events.
 
 1. Push these files and merge the workflow onto the default branch.
 2. Use `bootstrap/backend` to provision the one-time S3 backend bucket with versioning, encryption, and
-   appropriate state/lock access permissions. Do not use the application bucket
-   managed by these modules as the backend.
+   appropriate state/lock access permissions. Environment deployments do not create
+   application buckets; the backend bucket is managed separately.
 3. Configure AWS OIDC trust for this repository. Use separate plan and deployment
    roles; planning requires resource read permissions and backend state/lock
    access, while deployment requires resource management and any needed
@@ -55,10 +55,9 @@ GitHub to deliver `issue_comment` events.
 | --- | --- |
 | `AWS_ROLE_ARN` | Plan role in `*-plan`; deployment role in the corresponding deployment environment |
 | `AWS_REGION` | Resource region, for example `us-east-1` |
-| `TF_BUCKET_NAME` | Globally unique application bucket name for this environment |
 | `TF_VARS_JSON` | Optional JSON object overriding Terraform inputs, e.g. `{"enable_nat_gateway":true,"ami_id":"ami-..."}` |
 
-Keep region, backend bucket, application bucket and input variables identical
+Keep region, backend bucket and input variables identical
 between each plan/deployment pair. Only their IAM role should differ.
 State keys are `aws-devops/dev/terraform.tfstate`, `aws-devops/test/terraform.tfstate`,
 `aws-devops/pre/terraform.tfstate`, and `aws-devops/prod/terraform.tfstate`.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-for key in TARGET TF_VAR_bucket_name TF_VAR_aws_region STATE_BUCKET STATE_REGION ROLE_ARN; do
+for key in TARGET TF_VAR_aws_region STATE_BUCKET STATE_REGION ROLE_ARN; do
   [[ -n "${!key:-}" ]] || { echo "Missing GitHub environment variable: $key"; exit 1; }
 done
 [[ "$TARGET" =~ ^(dev|test|pre|prod)$ ]] || exit 1

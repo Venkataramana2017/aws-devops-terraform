@@ -1,7 +1,6 @@
 aws_region  = "us-east-1"
 name        = "devops-demo"
 environment = "dev"
-bucket_name = "replace-with-your-globally-unique-bucket-name"
 
 # NAT gateways incur hourly and data charges. No private internet egress by default.
 enable_nat_gateway = false

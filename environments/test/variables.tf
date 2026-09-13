@@ -13,10 +13,6 @@ variable "environment" {
   type        = string
   default     = "test"
 }
-variable "bucket_name" {
-  description = "Unique name for a NEW bucket, distinct from the existing root deployment."
-  type        = string
-}
 variable "ami_id" {
   description = "Optional pinned Amazon Linux compatible x86_64 AMI; otherwise use latest AL2023."
   type        = string

@@ -3,18 +3,17 @@
 For independent dev, test, pre-production and production deployments, use the
 [environment roots](../environments/README.md).
 
-Five independent modules are under `modules/`. Each contains `main.tf`,
+Four independent modules are under `modules/`. Each contains `main.tf`,
 `variables.tf`, `outputs.tf`, and `versions.tf`. The complete deployment in
 `examples/complete/` wires them together. Terraform >= 1.5 and AWS provider 5.x
 are required, matching the provider major version used by the existing project.
 
-The existing root S3 configuration and state are unchanged. Run commands from
-`examples/complete`, which has separate state. Do not use the existing root
-bucket name in this example or copy the root state into it.
+Run commands from `examples/complete`, which has separate state. Application S3
+buckets are not created. The environment backend bucket is managed separately
+by `bootstrap/backend`.
 
 | Module | Creates | Main required inputs | Useful outputs |
 | --- | --- | --- | --- |
-| `s3` | Private bucket, versioning, encryption, ownership controls, TLS-only policy | `bucket_name` | `bucket_id`, `bucket_arn` |
 | `vpc` | VPC, public/private subnet pairs, internet gateway, routes, optional NAT gateways, S3 gateway endpoint | `name`, `cidr_block`, `subnets` | `vpc_id`, subnet and route table maps |
 | `security-group` | Security group with named ingress/egress rules | `name`, `vpc_id` | `security_group_id` |
 | `ec2` | Standalone instance with encrypted gp3 storage and IMDSv2 | `name`, `ami_id`, `subnet_id`, `security_group_ids` | `instance_id`, `private_ip` |
@@ -30,7 +29,7 @@ SSM AMI parameter; passing an instance profile also requires `iam:PassRole`.
 ```powershell
 cd examples/complete
 Copy-Item terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars and replace bucket_name with a unique name.
+# Edit terraform.tfvars for your deployment.
 $env:AWS_PROFILE = "default"
 terraform init
 terraform fmt -check -recursive
@@ -61,10 +60,11 @@ creating these configuration files.
 ## Reuse a module
 
 ```hcl
-module "logs" {
-  source      = "../../modules/s3" # Adjust relative to your caller.
-  bucket_name = "your-globally-unique-logs-bucket"
-  tags        = { Environment = "dev" }
+module "compute_security_group" {
+  source = "../../modules/security-group" # Adjust relative to your caller.
+  name   = "dev-compute"
+  vpc_id = module.vpc.vpc_id
+  tags   = { Environment = "dev" }
 }
 ```
 
@@ -92,19 +92,13 @@ for AMIs with a different root device. The standalone and Auto Scaling
 modules accept plain-text `user_data` and optional existing IAM instance profiles
 and key pairs. SSH also requires an explicit ingress rule and network path.
 
-S3 defaults to AES256 encryption; supply `kms_key_arn` for an existing customer
-managed KMS key with suitable permissions. Nonempty bucket deletion is refused
-by default. Empty all object versions before teardown, or explicitly opt into
-`force_destroy` in the module call only when deletion is intended.
-
 ```powershell
 terraform plan -destroy -out=destroy.tfplan
 terraform apply destroy.tfplan
 ```
 
 State is local by default. For collaboration, configure an existing remote backend
-with access controls and locking before deployment; the bucket this example
-creates cannot bootstrap its own backend. Commit generated provider lock files;
+with access controls and locking before deployment. Commit generated provider lock files;
 state, working directories, plans, and private variable files are ignored.
 
 Provider references: [launch templates](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/launch_template)

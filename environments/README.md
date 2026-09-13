@@ -21,7 +21,7 @@ From the repository root, for example:
 ```powershell
 cd environments/dev
 Copy-Item terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars: replace bucket_name with a globally unique name.
+# Edit terraform.tfvars for the environment.
 $env:AWS_PROFILE = "your-dev-profile"
 terraform init -backend-config="bucket=bucket-backend-terraform-313932316713-us-east-1" -backend-config="region=us-east-1"
 terraform validate
@@ -30,10 +30,10 @@ terraform apply deployment.tfplan
 ```
 
 Repeat in `environments/test`, `environments/pre`, or `environments/prod` with
-that environment's credentials and unique bucket name. You can use separate AWS
+that environment's credentials and inputs. You can use separate AWS
 accounts through profiles; directories alone do not enforce account isolation.
 No Terraform workspaces are required. Run commands from the selected directory,
-not from the repository root, which still contains the original S3 deployment.
+not from the repository root. Application S3 buckets are not created.
 
 Each directory uses a separate S3 state key in the shared backend bucket. Follow
 [the one-time backend setup](../bootstrap/backend/README.md) before deployment.
@@ -42,7 +42,7 @@ are tracked. Never copy state between environments.
 
 Override `vpc_cidr`, `instance_type`, `capacity`, `aws_region`, `ami_id`, NAT
 options, and instance profile independently in each `terraform.tfvars`.
-Keep name prefixes and bucket names distinct. The VPC input requires a /16;
+Keep name prefixes distinct. The VPC input requires a /16;
 public /24 subnets use offsets 1 and 2, private /24 subnets use 11 and 12.
 
 Pin a compatible AMI for controlled pre/prod releases. Without a pinned AMI,

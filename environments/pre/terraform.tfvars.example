@@ -1,5 +1,4 @@
-# Copy to terraform.tfvars and choose a globally unique bucket name.
-bucket_name = "bucket-backend-terraform-313932316713-us-east-1"
+# Copy to terraform.tfvars and adjust the environment inputs.
 aws_region  = "us-east-1"
 instance_type = "t3.micro"
 enable_nat_gateway = true
