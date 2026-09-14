@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars and adjust the environment inputs.
+aws_region  = "us-east-1"
+instance_type = "t3.micro"
+enable_nat_gateway = true
+single_nat_gateway = false
+ami_id = "ami-0002d0abb85b05cfa"
+iam_instance_profile = "existing-test-ssm-profile"

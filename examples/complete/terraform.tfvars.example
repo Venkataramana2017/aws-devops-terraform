@@ -1,0 +1,10 @@
+aws_region  = "us-east-1"
+name        = "devops-demo"
+environment = "dev"
+
+# NAT gateways incur hourly and data charges. No private internet egress by default.
+enable_nat_gateway = false
+single_nat_gateway = false
+capacity = { min = 1, desired = 1, max = 3 }
+# ami_id = "ami-your-pinned-al2023-x86-64-image"
+# iam_instance_profile = "existing-ssm-instance-profile"
