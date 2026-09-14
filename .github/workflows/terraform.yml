@@ -129,7 +129,7 @@ jobs:
           OPERATION: ${{ needs.request.outputs.operation }}
           CONFIRMATION: ${{ inputs.confirmation }}
           PR_NUMBER: ${{ needs.request.outputs.pr }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DEPLOY_BRANCH: feature_devops
         run: |
           if [[ "$EVENT" == "issue_comment" ]]; then
             targets=()
@@ -139,7 +139,7 @@ jobs:
             done
             echo "environments=$(printf '%s\n' "${targets[@]}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
           elif [[ "$EVENT" == "workflow_dispatch" ]]; then
-            [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Run manual operations from the default branch.'; exit 1; }
+            [[ "$GITHUB_REF" == "refs/heads/$DEPLOY_BRANCH" ]] || { echo "Run manual operations from the $DEPLOY_BRANCH branch."; exit 1; }
             [[ "$TARGET" =~ ^(dev|test|pre|prod)$ ]] || exit 1
             [[ "$OPERATION" =~ ^(plan|apply|destroy)$ ]] || exit 1
             if [[ "$OPERATION" != "plan" ]]; then
