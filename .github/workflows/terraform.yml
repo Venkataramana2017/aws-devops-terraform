@@ -184,6 +184,7 @@ jobs:
     # Fork PRs receive static validation only. Never use pull_request_target here.
     if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'dev') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
+    # No required reviewers on dev-plan: approval belongs to execution after this plan.
     environment: dev-plan
     concurrency:
       group: terraform-state-dev
@@ -274,7 +275,7 @@ jobs:
     needs: [request, checks, dev_plan]
     if: ${{ !cancelled() && needs.dev_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
     runs-on: ubuntu-latest
-    # Configure required reviewers on these environments in GitHub Settings.
+    # Single deployment approval: configure required reviewers here, after the plan.
     environment: dev
     concurrency:
       group: terraform-state-dev
@@ -358,6 +359,7 @@ jobs:
     # Fork PRs receive static validation only. Never use pull_request_target here.
     if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'test') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.dev_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.dev_execute.result == 'success')) }}
     runs-on: ubuntu-latest
+    # No required reviewers on test-plan: approval belongs to execution after this plan.
     environment: test-plan
     concurrency:
       group: terraform-state-test
@@ -448,7 +450,7 @@ jobs:
     needs: [request, checks, test_plan]
     if: ${{ !cancelled() && needs.test_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
     runs-on: ubuntu-latest
-    # Configure required reviewers on these environments in GitHub Settings.
+    # Single deployment approval: configure required reviewers here, after the plan.
     environment: test
     concurrency:
       group: terraform-state-test
@@ -532,6 +534,7 @@ jobs:
     # Fork PRs receive static validation only. Never use pull_request_target here.
     if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'pre') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.test_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.test_execute.result == 'success')) }}
     runs-on: ubuntu-latest
+    # No required reviewers on pre-plan: approval belongs to execution after this plan.
     environment: pre-plan
     concurrency:
       group: terraform-state-pre
@@ -622,7 +625,7 @@ jobs:
     needs: [request, checks, pre_plan]
     if: ${{ !cancelled() && needs.pre_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
     runs-on: ubuntu-latest
-    # Configure required reviewers on these environments in GitHub Settings.
+    # Single deployment approval: configure required reviewers here, after the plan.
     environment: pre
     concurrency:
       group: terraform-state-pre
@@ -706,6 +709,7 @@ jobs:
     # Fork PRs receive static validation only. Never use pull_request_target here.
     if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'prod') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.pre_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.pre_execute.result == 'success')) }}
     runs-on: ubuntu-latest
+    # No required reviewers on prod-plan: approval belongs to execution after this plan.
     environment: prod-plan
     concurrency:
       group: terraform-state-prod
@@ -796,7 +800,7 @@ jobs:
     needs: [request, checks, prod_plan]
     if: ${{ !cancelled() && needs.prod_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
     runs-on: ubuntu-latest
-    # Configure required reviewers on these environments in GitHub Settings.
+    # Single deployment approval: configure required reviewers here, after the plan.
     environment: prod
     concurrency:
       group: terraform-state-prod
