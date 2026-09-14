@@ -15,18 +15,18 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Environment to manage
+        description: Last environment (always starts at dev, then test, pre, prod)
         type: choice
         options: [dev, test, pre, prod]
         required: true
       action:
-        description: Terraform operation
+        description: Operation to run in every selected environment
         type: choice
         options: [plan, apply, destroy]
         required: true
         default: plan
       confirmation:
-        description: 'For apply/destroy, type ACTION-ENVIRONMENT (example: apply-dev or destroy-prod)'
+        description: 'Confirm all stages: ACTION-through-ENVIRONMENT (example: apply-through-prod)'
         type: string
         required: false
       pr_number:
@@ -132,18 +132,28 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           if [[ "$EVENT" == "issue_comment" ]]; then
-            echo "environments=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
+            targets=()
+            for stage in dev test pre prod; do
+              targets+=("$stage")
+              [[ "$stage" == "$TARGET" ]] && break
+            done
+            echo "environments=$(printf '%s\n' "${targets[@]}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
           elif [[ "$EVENT" == "workflow_dispatch" ]]; then
             [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]] || { echo 'Run manual operations from the default branch.'; exit 1; }
             [[ "$TARGET" =~ ^(dev|test|pre|prod)$ ]] || exit 1
             [[ "$OPERATION" =~ ^(plan|apply|destroy)$ ]] || exit 1
             if [[ "$OPERATION" != "plan" ]]; then
-              [[ "$CONFIRMATION" == "$OPERATION-$TARGET" ]] || { echo 'Confirmation does not match the operation and environment.'; exit 1; }
+              [[ "$CONFIRMATION" == "$OPERATION-through-$TARGET" ]] || { echo 'Confirmation does not match the operation and environment.'; exit 1; }
             fi
             [[ -z "$PR_NUMBER" || "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || exit 1
-            echo "environments=[\"$TARGET\"]" >> "$GITHUB_OUTPUT"
+            targets=()
+            for stage in dev test pre prod; do
+              targets+=("$stage")
+              [[ "$stage" == "$TARGET" ]] && break
+            done
+            echo "environments=$(printf '%s\n' "${targets[@]}" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
           else
-            echo 'environments=["dev","test","pre","prod"]' >> "$GITHUB_OUTPUT"
+            echo 'environments=["dev"]' >> "$GITHUB_OUTPUT"
           fi
       - name: Formatting
         run: |
@@ -155,6 +165,7 @@ jobs:
           bash -n .github/scripts/prepare-terraform.sh
           node .github/scripts/pr-comment.test.js
           node .github/scripts/pr-command.test.js
+          node .github/scripts/sequential-workflow.test.js
       - name: Validate all environments without AWS credentials
         run: |
           terraform -chdir=bootstrap/backend init -backend=false -input=false -lockfile=readonly
@@ -164,25 +175,23 @@ jobs:
             terraform -chdir="environments/$target" validate -no-color
           done
 
-  plan:
+
+  dev_plan:
+    name: dev - plan
     needs: [request, checks]
     # Fork PRs receive static validation only. Never use pull_request_target here.
-    if: github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'dev') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJSON(needs.checks.outputs.environments) }}
-    environment: ${{ format('{0}-plan', matrix.target) }}
+    environment: dev-plan
     concurrency:
-      group: terraform-state-${{ matrix.target }}
+      group: terraform-state-dev
       cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     env:
-      TARGET: ${{ matrix.target }}
+      TARGET: dev
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
       STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
@@ -191,7 +200,7 @@ jobs:
       ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
     defaults:
       run:
-        working-directory: environments/${{ matrix.target }}
+        working-directory: environments/dev
     steps:
       - name: Recheck command approval
         if: github.event_name == 'issue_comment'
@@ -236,10 +245,10 @@ jobs:
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan-${{ matrix.target }}-${{ github.run_attempt }}
+          name: terraform-plan-dev-${{ github.run_attempt }}
           path: |
-            environments/${{ matrix.target }}/deployment.tfplan
-            environments/${{ matrix.target }}/plan.txt
+            environments/dev/deployment.tfplan
+            environments/dev/plan.txt
           retention-days: 1
           if-no-files-found: error
       - name: Comment plan result on PR
@@ -257,21 +266,22 @@ jobs:
             const comment = require('./.github/scripts/pr-comment.js');
             await comment({github, context, fs});
 
-  execute:
-    needs: [request, checks, plan]
-    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
+  dev_execute:
+    name: dev - execute approved plan
+    needs: [request, checks, dev_plan]
+    if: ${{ !cancelled() && needs.dev_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
     runs-on: ubuntu-latest
     # Configure required reviewers on these environments in GitHub Settings.
-    environment: ${{ needs.request.outputs.target }}
+    environment: dev
     concurrency:
-      group: terraform-state-${{ needs.request.outputs.target }}
+      group: terraform-state-dev
       cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
       pull-requests: write
     env:
-      TARGET: ${{ needs.request.outputs.target }}
+      TARGET: dev
       TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
       TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
       STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
@@ -280,7 +290,7 @@ jobs:
       ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
     defaults:
       run:
-        working-directory: environments/${{ needs.request.outputs.target }}
+        working-directory: environments/dev
     steps:
       - name: Recheck command approval
         if: github.event_name == 'issue_comment'
@@ -307,8 +317,509 @@ jobs:
         run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
       - uses: actions/download-artifact@v4
         with:
-          name: terraform-plan-${{ needs.request.outputs.target }}-${{ github.run_attempt }}
-          path: environments/${{ needs.request.outputs.target }}
+          name: terraform-plan-dev-${{ github.run_attempt }}
+          path: environments/dev
+      - name: Verify PR is still approved before applying
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - name: Apply the approved plan (including destroy plans)
+        run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
+      - name: Comment execution result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: execution
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  test_plan:
+    name: test - plan
+    needs: [request, checks, dev_plan, dev_execute]
+    # Fork PRs receive static validation only. Never use pull_request_target here.
+    if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'test') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.dev_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.dev_execute.result == 'success')) }}
+    runs-on: ubuntu-latest
+    environment: test-plan
+    concurrency:
+      group: terraform-state-test
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: test
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/test
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - name: Terraform plan
+        id: plan
+        env:
+          OPERATION: ${{ needs.request.outputs.operation }}
+        run: |
+          args=()
+          if [[ "$OPERATION" == 'destroy' ]]; then args+=(-destroy); fi
+          set +e
+          terraform plan -no-color -input=false -lock-timeout=5m -detailed-exitcode "${args[@]}" -out=deployment.tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          if [[ "$code" != 0 && "$code" != 2 ]]; then exit "$code"; fi
+          terraform show -json deployment.tfplan | jq '{create: ([.resource_changes[]? | select(.change.actions | index("create"))] | length), update: ([.resource_changes[]? | select(.change.actions | index("update"))] | length), delete: ([.resource_changes[]? | select(.change.actions | index("delete"))] | length)}' > summary.json
+          echo "### Terraform: $TARGET ($OPERATION)" >> "$GITHUB_STEP_SUMMARY"
+          cat summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Save exact plan for approval and execution
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-test-${{ github.run_attempt }}
+          path: |
+            environments/test/deployment.tfplan
+            environments/test/plan.txt
+          retention-days: 1
+          if-no-files-found: error
+      - name: Comment plan result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: plan
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  test_execute:
+    name: test - execute approved plan
+    needs: [request, checks, test_plan]
+    if: ${{ !cancelled() && needs.test_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
+    runs-on: ubuntu-latest
+    # Configure required reviewers on these environments in GitHub Settings.
+    environment: test
+    concurrency:
+      group: terraform-state-test
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: test
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/test
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-test-${{ github.run_attempt }}
+          path: environments/test
+      - name: Verify PR is still approved before applying
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - name: Apply the approved plan (including destroy plans)
+        run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
+      - name: Comment execution result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: execution
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  pre_plan:
+    name: pre - plan
+    needs: [request, checks, test_plan, test_execute]
+    # Fork PRs receive static validation only. Never use pull_request_target here.
+    if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'pre') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.test_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.test_execute.result == 'success')) }}
+    runs-on: ubuntu-latest
+    environment: pre-plan
+    concurrency:
+      group: terraform-state-pre
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: pre
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/pre
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - name: Terraform plan
+        id: plan
+        env:
+          OPERATION: ${{ needs.request.outputs.operation }}
+        run: |
+          args=()
+          if [[ "$OPERATION" == 'destroy' ]]; then args+=(-destroy); fi
+          set +e
+          terraform plan -no-color -input=false -lock-timeout=5m -detailed-exitcode "${args[@]}" -out=deployment.tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          if [[ "$code" != 0 && "$code" != 2 ]]; then exit "$code"; fi
+          terraform show -json deployment.tfplan | jq '{create: ([.resource_changes[]? | select(.change.actions | index("create"))] | length), update: ([.resource_changes[]? | select(.change.actions | index("update"))] | length), delete: ([.resource_changes[]? | select(.change.actions | index("delete"))] | length)}' > summary.json
+          echo "### Terraform: $TARGET ($OPERATION)" >> "$GITHUB_STEP_SUMMARY"
+          cat summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Save exact plan for approval and execution
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-pre-${{ github.run_attempt }}
+          path: |
+            environments/pre/deployment.tfplan
+            environments/pre/plan.txt
+          retention-days: 1
+          if-no-files-found: error
+      - name: Comment plan result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: plan
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  pre_execute:
+    name: pre - execute approved plan
+    needs: [request, checks, pre_plan]
+    if: ${{ !cancelled() && needs.pre_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
+    runs-on: ubuntu-latest
+    # Configure required reviewers on these environments in GitHub Settings.
+    environment: pre
+    concurrency:
+      group: terraform-state-pre
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: pre
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/pre
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-pre-${{ github.run_attempt }}
+          path: environments/pre
+      - name: Verify PR is still approved before applying
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - name: Apply the approved plan (including destroy plans)
+        run: terraform apply -input=false -no-color -lock-timeout=5m deployment.tfplan
+      - name: Comment execution result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: execution
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  prod_plan:
+    name: prod - plan
+    needs: [request, checks, pre_plan, pre_execute]
+    # Fork PRs receive static validation only. Never use pull_request_target here.
+    if: ${{ !cancelled() && needs.request.result == 'success' && needs.checks.result == 'success' && contains(fromJSON(needs.checks.outputs.environments || '[]'), 'prod') && (github.event_name == 'issue_comment' || github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository) && ((needs.request.outputs.operation == 'plan' && needs.pre_plan.result == 'success') || (needs.request.outputs.operation != 'plan' && needs.pre_execute.result == 'success')) }}
+    runs-on: ubuntu-latest
+    environment: prod-plan
+    concurrency:
+      group: terraform-state-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: prod
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/prod
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - name: Terraform plan
+        id: plan
+        env:
+          OPERATION: ${{ needs.request.outputs.operation }}
+        run: |
+          args=()
+          if [[ "$OPERATION" == 'destroy' ]]; then args+=(-destroy); fi
+          set +e
+          terraform plan -no-color -input=false -lock-timeout=5m -detailed-exitcode "${args[@]}" -out=deployment.tfplan > plan.txt 2>&1
+          code=$?
+          set -e
+          cat plan.txt
+          if [[ "$code" != 0 && "$code" != 2 ]]; then exit "$code"; fi
+          terraform show -json deployment.tfplan | jq '{create: ([.resource_changes[]? | select(.change.actions | index("create"))] | length), update: ([.resource_changes[]? | select(.change.actions | index("update"))] | length), delete: ([.resource_changes[]? | select(.change.actions | index("delete"))] | length)}' > summary.json
+          echo "### Terraform: $TARGET ($OPERATION)" >> "$GITHUB_STEP_SUMMARY"
+          cat summary.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Save exact plan for approval and execution
+        if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-prod-${{ github.run_attempt }}
+          path: |
+            environments/prod/deployment.tfplan
+            environments/prod/plan.txt
+          retention-days: 1
+          if-no-files-found: error
+      - name: Comment plan result on PR
+        if: always() && needs.request.outputs.pr != ''
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          RESULT: ${{ job.status }}
+          OPERATION: ${{ needs.request.outputs.operation }}
+          COMMIT_SHA: ${{ needs.request.outputs.sha }}
+          PHASE: plan
+        with:
+          script: |
+            const fs = require('fs');
+            const comment = require('./.github/scripts/pr-comment.js');
+            await comment({github, context, fs});
+
+  prod_execute:
+    name: prod - execute approved plan
+    needs: [request, checks, prod_plan]
+    if: ${{ !cancelled() && needs.prod_plan.result == 'success' && (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan' }}
+    runs-on: ubuntu-latest
+    # Configure required reviewers on these environments in GitHub Settings.
+    environment: prod
+    concurrency:
+      group: terraform-state-prod
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    env:
+      TARGET: prod
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      TF_VARS_JSON: ${{ vars.TF_VARS_JSON || '{}' }}
+      STATE_BUCKET: bucket-backend-terraform-313932316713-us-east-1
+      STATE_REGION: us-east-1
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+    defaults:
+      run:
+        working-directory: environments/prod
+    steps:
+      - name: Recheck command approval
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        env:
+          EXPECTED_SHA: ${{ needs.request.outputs.sha }}
+        with:
+          script: *authorize-command
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.request.outputs.sha }}
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+      - name: Prepare remote backend and variables
+        run: bash ../../.github/scripts/prepare-terraform.sh
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Initialize remote state
+        run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
+      - uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-prod-${{ github.run_attempt }}
+          path: environments/prod
       - name: Verify PR is still approved before applying
         if: github.event_name == 'issue_comment'
         uses: actions/github-script@v7

@@ -66,8 +66,39 @@ The workflow reads Actions **variables**, not secrets, for this value.
 defaults. Set it to override the deployment region. `TF_VARS_JSON` is an optional
 JSON object containing Terraform input overrides and defaults to `{}`.
 Repository Actions variables can supply shared values; environment variables
-can supply environment-specific values. Automatic push/PR plans target all four
-environments, so each plan job needs an available `AWS_ROLE_ARN`.
+can supply environment-specific values. Automatic push/PR plans target dev only.
+Each selected plan and execution job needs an available `AWS_ROLE_ARN`.
+
+## Sequential GitHub Actions approvals
+
+Manual runs always start at dev. The environment input selects the last stage:
+`prod` runs dev, test, pre, prod in that order; `test` runs dev, test.
+Select one action for the entire run: plan, apply, or destroy. For apply/destroy,
+enter `apply-through-prod` or `destroy-through-prod` (replace prod with the chosen
+last environment) as confirmation. Run from the default branch.
+
+For apply/destroy, each stage creates a plan, waits for execution approval, and
+applies that exact saved plan. Only successful execution unlocks the next stage.
+Destroy follows the same dev-first order. Plan-only runs advance after a
+successful plan without an execution job. Failures or rejected approvals stop
+later stages. Saved plans expire after one day; start a fresh run if approval
+takes longer or Terraform reports a stale plan.
+
+In Settings > Environments, enable **Required reviewers** for:
+
+- `dev`, `test`, `pre`, `prod`: approve each saved plan before apply/destroy.
+- `test-plan`, `pre-plan`, `prod-plan`: approve proceeding to the next environment.
+
+Leave dev-plan without required reviewers if its plan should start immediately.
+GitHub displays **Review deployments > Approve and deploy** when a stage is
+waiting. Reject to stop the run. These approval rules must be configured in
+GitHub; declaring an environment in YAML alone does not pause a job. Required
+reviewer availability depends on repository visibility and your GitHub plan.
+
+Approved PR commands use the same sequence: `test //apply` runs dev then test;
+`prod //destroy` plans and destroys each environment from dev through prod, with
+the configured approval gates. The current PR commit must remain approved.
+Push and pull-request events perform static checks and dev planning only.
 
 ## Shared remote state
 
