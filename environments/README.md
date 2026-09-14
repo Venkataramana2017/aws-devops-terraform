@@ -50,6 +50,25 @@ the latest AL2023 x86_64 image is looked up during planning. Private instances
 need NAT or appropriate interface endpoints plus IAM permissions for SSM
 management. Enabling NAT with `single_nat_gateway = false` creates one per AZ.
 
+## GitHub Actions variables
+
+Plan jobs use GitHub environments `dev-plan`, `test-plan`, `pre-plan`, and
+`prod-plan`. Apply/destroy jobs use `dev`, `test`, `pre`, and `prod`.
+Variables configured on `dev` are not available to `dev-plan`.
+
+In **Settings > Environments > environment name > Environment variables**, set
+`AWS_ROLE_ARN` to the IAM role ARN that the job should assume through GitHub OIDC.
+Configure it for both the plan and execution environments you use. The role's
+OIDC trust policy must allow the corresponding GitHub environment.
+The workflow reads Actions **variables**, not secrets, for this value.
+
+`AWS_REGION` is optional and defaults to `us-east-1`, matching the Terraform
+defaults. Set it to override the deployment region. `TF_VARS_JSON` is an optional
+JSON object containing Terraform input overrides and defaults to `{}`.
+Repository Actions variables can supply shared values; environment variables
+can supply environment-specific values. Automatic push/PR plans target all four
+environments, so each plan job needs an available `AWS_ROLE_ARN`.
+
 ## Shared remote state
 
 Committed backend.tf files enable S3 locking and separate environment keys.
