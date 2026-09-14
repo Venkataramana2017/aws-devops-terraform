@@ -19,6 +19,12 @@ function allowed(name, operation, selected, results = {}, event = 'workflow_disp
     needs, github, () => cancelled, (list, value) => list.includes(value), JSON.parse);
 }
 for (const [i, stage] of stages.entries()) {
+  // Execution-only retries must use the producer's saved artifact, not their new run_attempt.
+  assert.ok(jobs[`${stage}_plan`].includes('artifact_id: ${{ steps.upload_plan.outputs.artifact-id }}'));
+  assert.ok(jobs[`${stage}_plan`].includes('id: upload_plan'));
+  assert.ok(jobs[`${stage}_execute`].includes(`artifact-ids: \u0024{{ needs.${stage}_plan.outputs.artifact_id }}`));
+  assert.ok(jobs[`${stage}_execute`].includes('run: test -n "$PLAN_ARTIFACT_ID"'));
+  assert.ok(!jobs[`${stage}_execute`].includes('github.run_attempt'));
   assert.match(jobs[`${stage}_plan`], new RegExp(`environment: ${stage}-plan`));
   assert.match(jobs[`${stage}_execute`], new RegExp(`environment: ${stage}\\n`));
   if (i) assert.match(jobs[`${stage}_plan`], new RegExp(`needs: \\[request, checks, ${stages[i-1]}_plan, ${stages[i-1]}_execute\\]`));

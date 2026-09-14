@@ -75,13 +75,19 @@ Manual runs always start at dev. The environment input selects the last stage:
 `prod` runs dev, test, pre, prod in that order; `test` runs dev, test.
 Select one action for the entire run: plan, apply, or destroy. For apply/destroy,
 enter `apply-through-prod` or `destroy-through-prod` (replace prod with the chosen
-last environment) as confirmation. Run from the default branch.
+last environment) as confirmation. Select `feature_devops` in the **Use workflow
+from** branch dropdown. Manual operations are restricted to that branch.
+Keep a workflow with `workflow_dispatch` on the default branch so GitHub displays
+the Run workflow button. If environment deployment branch restrictions are
+configured, they must also allow `feature_devops`.
 
 For apply/destroy, each stage creates a plan, waits for execution approval, and
 applies that exact saved plan. Only successful execution unlocks the next stage.
 Destroy follows the same dev-first order. Plan-only runs advance after a
 successful plan without an execution job. Failures or rejected approvals stop
-later stages. Saved plans expire after one day; start a fresh run if approval
+later stages. Execution downloads the artifact ID returned by its plan job, so
+an execution-only retry uses the original saved plan even when the run attempt
+number changes. Saved plans expire after one day; start a fresh run if approval
 takes longer or Terraform reports a stale plan.
 
 In Settings > Environments, enable **Required reviewers** for:
