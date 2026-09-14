@@ -85,7 +85,9 @@ For apply/destroy, each stage creates a plan, waits for execution approval, and
 applies that exact saved plan. Only successful execution unlocks the next stage.
 Destroy follows the same dev-first order. Plan-only runs advance after a
 successful plan without an execution job. Failures or rejected approvals stop
-later stages. Saved plans expire after one day; start a fresh run if approval
+later stages. Execution downloads the artifact ID returned by its plan job, so
+an execution-only retry uses the original saved plan even when the run attempt
+number changes. Saved plans expire after one day; start a fresh run if approval
 takes longer or Terraform reports a stale plan.
 
 In Settings > Environments, enable **Required reviewers** for:

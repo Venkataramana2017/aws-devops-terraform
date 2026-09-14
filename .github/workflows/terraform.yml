@@ -177,6 +177,8 @@ jobs:
 
 
   dev_plan:
+    outputs:
+      artifact_id: ${{ steps.upload_plan.outputs.artifact-id }}
     name: dev - plan
     needs: [request, checks]
     # Fork PRs receive static validation only. Never use pull_request_target here.
@@ -243,7 +245,8 @@ jobs:
           cat summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: Save exact plan for approval and execution
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
-        uses: actions/upload-artifact@v4
+        id: upload_plan
+        uses: actions/upload-artifact@v6
         with:
           name: terraform-plan-dev-${{ github.run_attempt }}
           path: |
@@ -315,9 +318,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Initialize remote state
         run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
-      - uses: actions/download-artifact@v4
+      - name: Verify saved plan reference
+        env:
+          PLAN_ARTIFACT_ID: ${{ needs.dev_plan.outputs.artifact_id }}
+        run: test -n "$PLAN_ARTIFACT_ID"
+      - uses: actions/download-artifact@v7
         with:
-          name: terraform-plan-dev-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.dev_plan.outputs.artifact_id }}
           path: environments/dev
       - name: Verify PR is still approved before applying
         if: github.event_name == 'issue_comment'
@@ -344,6 +351,8 @@ jobs:
             await comment({github, context, fs});
 
   test_plan:
+    outputs:
+      artifact_id: ${{ steps.upload_plan.outputs.artifact-id }}
     name: test - plan
     needs: [request, checks, dev_plan, dev_execute]
     # Fork PRs receive static validation only. Never use pull_request_target here.
@@ -410,7 +419,8 @@ jobs:
           cat summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: Save exact plan for approval and execution
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
-        uses: actions/upload-artifact@v4
+        id: upload_plan
+        uses: actions/upload-artifact@v6
         with:
           name: terraform-plan-test-${{ github.run_attempt }}
           path: |
@@ -482,9 +492,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Initialize remote state
         run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
-      - uses: actions/download-artifact@v4
+      - name: Verify saved plan reference
+        env:
+          PLAN_ARTIFACT_ID: ${{ needs.test_plan.outputs.artifact_id }}
+        run: test -n "$PLAN_ARTIFACT_ID"
+      - uses: actions/download-artifact@v7
         with:
-          name: terraform-plan-test-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.test_plan.outputs.artifact_id }}
           path: environments/test
       - name: Verify PR is still approved before applying
         if: github.event_name == 'issue_comment'
@@ -511,6 +525,8 @@ jobs:
             await comment({github, context, fs});
 
   pre_plan:
+    outputs:
+      artifact_id: ${{ steps.upload_plan.outputs.artifact-id }}
     name: pre - plan
     needs: [request, checks, test_plan, test_execute]
     # Fork PRs receive static validation only. Never use pull_request_target here.
@@ -577,7 +593,8 @@ jobs:
           cat summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: Save exact plan for approval and execution
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
-        uses: actions/upload-artifact@v4
+        id: upload_plan
+        uses: actions/upload-artifact@v6
         with:
           name: terraform-plan-pre-${{ github.run_attempt }}
           path: |
@@ -649,9 +666,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Initialize remote state
         run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
-      - uses: actions/download-artifact@v4
+      - name: Verify saved plan reference
+        env:
+          PLAN_ARTIFACT_ID: ${{ needs.pre_plan.outputs.artifact_id }}
+        run: test -n "$PLAN_ARTIFACT_ID"
+      - uses: actions/download-artifact@v7
         with:
-          name: terraform-plan-pre-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.pre_plan.outputs.artifact_id }}
           path: environments/pre
       - name: Verify PR is still approved before applying
         if: github.event_name == 'issue_comment'
@@ -678,6 +699,8 @@ jobs:
             await comment({github, context, fs});
 
   prod_plan:
+    outputs:
+      artifact_id: ${{ steps.upload_plan.outputs.artifact-id }}
     name: prod - plan
     needs: [request, checks, pre_plan, pre_execute]
     # Fork PRs receive static validation only. Never use pull_request_target here.
@@ -744,7 +767,8 @@ jobs:
           cat summary.json >> "$GITHUB_STEP_SUMMARY"
       - name: Save exact plan for approval and execution
         if: (github.event_name == 'workflow_dispatch' || github.event_name == 'issue_comment') && needs.request.outputs.operation != 'plan'
-        uses: actions/upload-artifact@v4
+        id: upload_plan
+        uses: actions/upload-artifact@v6
         with:
           name: terraform-plan-prod-${{ github.run_attempt }}
           path: |
@@ -816,9 +840,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Initialize remote state
         run: terraform init -input=false -lockfile=readonly -backend-config=backend.generated.hcl
-      - uses: actions/download-artifact@v4
+      - name: Verify saved plan reference
+        env:
+          PLAN_ARTIFACT_ID: ${{ needs.prod_plan.outputs.artifact_id }}
+        run: test -n "$PLAN_ARTIFACT_ID"
+      - uses: actions/download-artifact@v7
         with:
-          name: terraform-plan-prod-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.prod_plan.outputs.artifact_id }}
           path: environments/prod
       - name: Verify PR is still approved before applying
         if: github.event_name == 'issue_comment'
