@@ -210,7 +210,7 @@ jobs:
           terraform_wrapper: false
       - name: Prepare remote backend and variables
         run: bash ../../.github/scripts/prepare-terraform.sh
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
         with:
           role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -299,7 +299,7 @@ jobs:
           terraform_wrapper: false
       - name: Prepare remote backend and variables
         run: bash ../../.github/scripts/prepare-terraform.sh
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6.2.4
         with:
           role-to-assume: ${{ env.ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
