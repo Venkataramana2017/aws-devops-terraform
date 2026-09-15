@@ -90,12 +90,16 @@ an execution-only retry uses the original saved plan even when the run attempt
 number changes. Saved plans expire after one day; start a fresh run if approval
 takes longer or Terraform reports a stale plan.
 
-In Settings > Environments, enable **Required reviewers** for:
+Use one deployment approval per environment, after its plan succeeds:
 
-- `dev`, `test`, `pre`, `prod`: approve each saved plan before apply/destroy.
-- `test-plan`, `pre-plan`, `prod-plan`: approve proceeding to the next environment.
+- In Settings > Environments, disable **Required reviewers** on `dev-plan`,
+  `test-plan`, `pre-plan`, and `prod-plan`, then save the protection rules.
+- Keep **Required reviewers** enabled on `dev`, `test`, `pre`, and `prod`.
+  Add yourself and leave **Prevent self-review** unchecked for self-approval.
 
-Leave dev-plan without required reviewers if its plan should start immediately.
+Dev plans automatically, then waits for approval to apply/destroy. After dev
+finishes, test plans automatically and waits for its own deployment approval;
+pre and prod follow the same sequence. Plan-only runs need no deployment approval.
 GitHub displays **Review deployments > Approve and deploy** when a stage is
 waiting. Reject to stop the run. These approval rules must be configured in
 GitHub; declaring an environment in YAML alone does not pause a job. Required
